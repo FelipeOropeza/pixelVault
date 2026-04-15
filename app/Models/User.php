@@ -9,8 +9,18 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Notifications\Notifiable;
 
+/**
+ * @property int $id
+ * @property string $name
+ * @property string $email
+ * @property int|null $plan_id
+ * @property int $storage_used_bytes
+ * @property \App\Models\Plan|null $subscription
+ * @property \Illuminate\Database\Eloquent\Collection|\App\Models\Document[] $documents
+ */
 #[Fillable(['name', 'email', 'password', 'plan_id', 'storage_used_bytes'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
@@ -31,9 +41,9 @@ class User extends Authenticatable
         ];
     }
 
-    public function plan(): BelongsTo
+    public function subscription(): BelongsTo
     {
-        return $this->belongsTo(Plan::class);
+        return $this->belongsTo(Plan::class, 'plan_id');
     }
 
     public function hasAvailableStorage(int $bytes): bool
@@ -42,7 +52,7 @@ class User extends Authenticatable
             return false;
         }
 
-        return ($this->storage_used_bytes + $bytes) <= $this->plan->storage_limit_bytes;
+        return ($this->storage_used_bytes + $bytes) <= ($this->subscription->storage_limit_bytes ?? 0);
     }
 
     public function addStorageUsage(int $bytes): void
@@ -57,5 +67,10 @@ class User extends Authenticatable
         } else {
             $this->update(['storage_used_bytes' => 0]);
         }
+    }
+
+    public function documents(): HasMany
+    {
+        return $this->hasMany(Document::class);
     }
 }

@@ -20,10 +20,13 @@ class DatabaseSeeder extends Seeder
 
         // User::factory(10)->create();
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-            'plan_id' => Plan::where('slug', 'free')->first()?->id,
-        ]);
+        User::firstOrCreate(
+            ['email' => 'test@example.com'],
+            [
+                'name' => 'Test User',
+                'password' => \Illuminate\Support\Facades\Hash::make('password'),
+                'plan_id' => Plan::where('slug', 'free')->first()?->id,
+            ]
+        );
     }
 }

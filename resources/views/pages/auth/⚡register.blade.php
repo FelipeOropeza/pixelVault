@@ -24,6 +24,7 @@ new class extends Component
             'name' => $this->name,
             'email' => $this->email,
             'password' => Hash::make($this->password),
+            'plan_id' => \App\Models\Plan::where('slug', 'free')->first()?->id,
         ]);
 
         Auth::login($user);

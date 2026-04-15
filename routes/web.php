@@ -8,6 +8,7 @@ Route::livewire('/register', 'pages::auth.register')->name('register');
 
 Route::middleware('auth')->group(function () {
     Route::livewire('/dashboard', 'pages::dashboard')->name('dashboard');
+    Route::livewire('/plans', 'pages::plans')->name('plans');
     
     Route::post('/logout', function () {
         Illuminate\Support\Facades\Auth::logout();
