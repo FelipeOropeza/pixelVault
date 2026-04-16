@@ -18,6 +18,96 @@ new class extends Component {
     public string $filterType = 'all'; // all, image, video, pdf, audio, archive
     public string $newFolderName = '';
     public bool $isCreatingFolder = false;
+    public array $selectedDocumentIds = [];
+
+    public function toggleSelection(int $id): void
+    {
+        if (in_array($id, $this->selectedDocumentIds)) {
+            $this->selectedDocumentIds = array_diff($this->selectedDocumentIds, [$id]);
+        } else {
+            $this->selectedDocumentIds[] = $id;
+        }
+    }
+
+    public function clearSelection(): void
+    {
+        $this->selectedDocumentIds = [];
+    }
+
+    public function deleteSelected(): void
+    {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+        $docs = $user->documents()->withTrashed()->whereIn('id', $this->selectedDocumentIds)->get();
+
+        foreach ($docs as $doc) {
+            if ($this->view === 'trash') {
+                Storage::disk('public')->delete($doc->path);
+                $user->reduceStorageUsage($doc->size_bytes);
+                $doc->forceDelete();
+            } else {
+                $doc->delete();
+            }
+        }
+
+        $this->clearSelection();
+        $this->successMessage = count($docs) . ' arquivos processados.';
+    }
+
+    public function favoriteSelected(): void
+    {
+        Auth::user()->documents()->whereIn('id', $this->selectedDocumentIds)->update(['is_favorite' => true]);
+        $this->clearSelection();
+        $this->successMessage = 'Arquivos favoritados com sucesso.';
+    }
+
+    public function restoreSelected(): void
+    {
+        Auth::user()->documents()->onlyTrashed()->whereIn('id', $this->selectedDocumentIds)->restore();
+        $this->clearSelection();
+        $this->successMessage = 'Arquivos restaurados com sucesso.';
+    }
+
+    public function moveSelectedDocuments(?int $targetFolderId): void
+    {
+        if (empty($this->selectedDocumentIds)) return;
+
+        Auth::user()->documents()->withTrashed()->whereIn('id', $this->selectedDocumentIds)->update(['folder_id' => $targetFolderId]);
+        
+        $count = count($this->selectedDocumentIds);
+        $this->clearSelection();
+        $this->successMessage = "$count arquivos movidos com sucesso!";
+    }
+
+    public function moveDocument(int $docId, ?int $targetFolderId): void
+    {
+        $doc = Auth::user()->documents()->withTrashed()->findOrFail($docId);
+        $doc->update(['folder_id' => $targetFolderId]);
+
+        $this->successMessage = 'Arquivo movido com sucesso!';
+    }
+
+    public function deleteFolder(int $id, bool $force = false): void
+    {
+        $folder = Auth::user()->folders()->withCount('documents')->findOrFail($id);
+
+        if ($folder->documents_count > 0 && !$force) {
+            $this->js("if(confirm('Esta pasta contém {$folder->documents_count} arquivos. Deseja excluir a pasta e mover todos os arquivos para a lixeira?')) { \$wire.deleteFolder($id, true) }");
+            return;
+        }
+
+        // Move arquivos para a lixeira se houver
+        if ($folder->documents_count > 0) {
+            $folder->documents()->update(['deleted_at' => now()]);
+        }
+
+        $folder->delete();
+        $this->successMessage = 'Pasta excluída com sucesso!';
+        
+        if ($this->currentFolderId === $id) {
+            $this->selectFolder(null);
+        }
+    }
 
     public function updatedFile(): void
     {
@@ -260,14 +350,34 @@ new class extends Component {
     <div class="flex flex-col gap-8 mb-12">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div class="space-y-1">
-                <h1 class="text-4xl font-black tracking-tight text-zinc-900 dark:text-white leading-none">Meu Cofre</h1>
-                <div class="flex items-center gap-2 text-zinc-500 dark:text-zinc-400 font-medium tracking-tight">
-                    <button wire:click="selectFolder(null)" class="hover:text-indigo-600 transition-colors">Início</button>
-                    @foreach($breadcrumbs as $breadcrumb)
-                        <flux:icon icon="chevron-right" class="size-3" />
-                        <button wire:click="selectFolder({{ $breadcrumb->id }})" class="hover:text-indigo-600 transition-colors">{{ $breadcrumb->name }}</button>
-                    @endforeach
+                <div class="flex items-center gap-3">
+                    @if($currentFolderId)
+                        <flux:button wire:click="selectFolder(null)" variant="ghost" size="sm" icon="arrow-left" class="text-zinc-400 hover:text-indigo-600 p-0" />
+                    @endif
+                    <h1 class="text-4xl font-black tracking-tight text-zinc-900 dark:text-white leading-none">Meu Cofre</h1>
                 </div>
+                <div 
+                class="flex items-center gap-2 text-zinc-500 dark:text-zinc-400 font-medium tracking-tight"
+                x-data="{ over: false }"
+                @dragover.prevent="over = true"
+                @dragleave="over = false"
+                @drop="over = false; $wire.selectedDocumentIds.length > 0 ? $wire.moveSelectedDocuments(null) : $wire.moveDocument($event.dataTransfer.getData('docId'), null)"
+                x-bind:class="over ? 'text-indigo-600 scale-105 transition-all' : ''"
+            >
+                <button wire:click="selectFolder(null)" class="hover:text-indigo-600 transition-colors">Início</button>
+                @foreach($breadcrumbs as $breadcrumb)
+                    <flux:icon icon="chevron-right" class="size-3" />
+                    <button 
+                        @dragover.prevent="over = true"
+                        @dragleave="over = false"
+                        @drop="over = false; $wire.selectedDocumentIds.length > 0 ? $wire.moveSelectedDocuments({{ $breadcrumb->id }}) : $wire.moveDocument($event.dataTransfer.getData('docId'), {{ $breadcrumb->id }})"
+                        wire:click="selectFolder({{ $breadcrumb->id }})" 
+                        class="hover:text-indigo-600 transition-colors"
+                    >
+                        {{ $breadcrumb->name }}
+                    </button>
+                @endforeach
+            </div>
             </div>
 
             <div class="flex items-center gap-3">
@@ -290,13 +400,37 @@ new class extends Component {
         </div>
 
         {{-- Filtros de Extensão --}}
-        <div class="flex flex-wrap items-center gap-2">
-            <flux:button wire:click="setFilterType('all')" size="sm" variant="{{ $filterType === 'all' ? 'primary' : 'ghost' }}" class="{{ $filterType === 'all' ? 'bg-indigo-600' : '' }}">Todos</flux:button>
-            <flux:button wire:click="setFilterType('image')" size="sm" variant="{{ $filterType === 'image' ? 'primary' : 'ghost' }}" icon="photo" class="{{ $filterType === 'image' ? 'bg-indigo-600' : '' }}">Imagens</flux:button>
-            <flux:button wire:click="setFilterType('video')" size="sm" variant="{{ $filterType === 'video' ? 'primary' : 'ghost' }}" icon="video-camera" class="{{ $filterType === 'video' ? 'bg-indigo-600' : '' }}">Vídeos</flux:button>
-            <flux:button wire:click="setFilterType('pdf')" size="sm" variant="{{ $filterType === 'pdf' ? 'primary' : 'ghost' }}" icon="document-text" class="{{ $filterType === 'pdf' ? 'bg-indigo-600' : '' }}">PDFs</flux:button>
-            <flux:button wire:click="setFilterType('audio')" size="sm" variant="{{ $filterType === 'audio' ? 'primary' : 'ghost' }}" icon="musical-note" class="{{ $filterType === 'audio' ? 'bg-indigo-600' : '' }}">Áudios</flux:button>
-            <flux:button wire:click="setFilterType('archive')" size="sm" variant="{{ $filterType === 'archive' ? 'primary' : 'ghost' }}" icon="archive-box" class="{{ $filterType === 'archive' ? 'bg-indigo-600' : '' }}">Arquivados</flux:button>
+        <div class="flex flex-wrap items-center justify-between gap-4">
+            <div class="flex flex-wrap items-center gap-2">
+                <flux:button wire:click="setFilterType('all')" size="sm" variant="{{ $filterType === 'all' ? 'primary' : 'ghost' }}" class="{{ $filterType === 'all' ? 'bg-indigo-600' : '' }}">Todos</flux:button>
+                <flux:button wire:click="setFilterType('image')" size="sm" variant="{{ $filterType === 'image' ? 'primary' : 'ghost' }}" icon="photo" class="{{ $filterType === 'image' ? 'bg-indigo-600' : '' }}">Imagens</flux:button>
+                <flux:button wire:click="setFilterType('video')" size="sm" variant="{{ $filterType === 'video' ? 'primary' : 'ghost' }}" icon="video-camera" class="{{ $filterType === 'video' ? 'bg-indigo-600' : '' }}">Vídeos</flux:button>
+                <flux:button wire:click="setFilterType('pdf')" size="sm" variant="{{ $filterType === 'pdf' ? 'primary' : 'ghost' }}" icon="document-text" class="{{ $filterType === 'pdf' ? 'bg-indigo-600' : '' }}">PDFs</flux:button>
+                <flux:button wire:click="setFilterType('audio')" size="sm" variant="{{ $filterType === 'audio' ? 'primary' : 'ghost' }}" icon="musical-note" class="{{ $filterType === 'audio' ? 'bg-indigo-600' : '' }}">Áudios</flux:button>
+                <flux:button wire:click="setFilterType('archive')" size="sm" variant="{{ $filterType === 'archive' ? 'primary' : 'ghost' }}" icon="archive-box" class="{{ $filterType === 'archive' ? 'bg-indigo-600' : '' }}">Arquivados</flux:button>
+            </div>
+
+            @if(count($selectedDocumentIds) > 0)
+                <div 
+                    x-data 
+                    x-transition
+                    class="flex items-center gap-3 bg-indigo-50 dark:bg-indigo-900/20 px-4 py-2 rounded-2xl border border-indigo-100 dark:border-indigo-800"
+                >
+                    <span class="text-xs font-black text-indigo-600 dark:text-indigo-400">{{ count($selectedDocumentIds) }} selecionados</span>
+                    <div class="h-4 w-px bg-indigo-200 dark:bg-indigo-800"></div>
+                    
+                    @if($view === 'trash')
+                        <flux:button wire:click="restoreSelected" variant="ghost" size="xs" icon="arrow-path" class="text-green-600">Restaurar</flux:button>
+                    @else
+                        <flux:button wire:click="favoriteSelected" variant="ghost" size="xs" icon="star" class="text-indigo-600">Favoritar</flux:button>
+                    @endif
+
+                    <flux:button wire:click="deleteSelected" wire:confirm="Excluir selecionados?" variant="ghost" size="xs" icon="trash" class="text-red-600">
+                        {{ $view === 'trash' ? 'Excluir Permanentemente' : 'Excluir' }}
+                    </flux:button>
+                    <flux:button wire:click="clearSelection" variant="ghost" size="xs">Cancelar</flux:button>
+                </div>
+            @endif
         </div>
     </div>
 
@@ -348,13 +482,32 @@ new class extends Component {
             {{-- Pastas --}}
             @if($view === 'all')
                 <div class="px-2 pt-4">
-                    <h3 class="text-xs font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 mb-4 px-4">Minhas Pastas</h3>
+                    <div class="space-y-1">
+                        <flux:button
+                            wire:click="selectFolder(null)"
+                            variant="ghost"
+                            class="w-full justify-start text-zinc-600 dark:text-zinc-400 font-bold {{ $currentFolderId === null && $view === 'all' ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600' : '' }}"
+                            icon-leading="home"
+                        >
+                            Todos os Arquivos
+                        </flux:button>
+                    </div>
+
+                    <h3 class="text-xs font-black uppercase tracking-widest text-zinc-400 dark:text-zinc-500 mb-4 mt-6 px-4 flex items-center justify-between">
+                        <span>Minhas Pastas</span>
+                        <flux:button wire:click="$set('isCreatingFolder', true)" variant="ghost" size="xs" icon="plus" class="text-zinc-400" />
+                    </h3>
                     <div class="space-y-1">
                         @foreach(auth()->user()->folders()->where('parent_id', null)->get() as $sidebarFolder)
                             <flux:button
+                                x-data="{ over: false }"
+                                @dragover.prevent="over = true"
+                                @dragleave="over = false"
+                                @drop="over = false; $wire.selectedDocumentIds.length > 0 ? $wire.moveSelectedDocuments({{ $sidebarFolder->id }}) : $wire.moveDocument($event.dataTransfer.getData('docId'), {{ $sidebarFolder->id }})"
                                 wire:click="selectFolder({{ $sidebarFolder->id }})"
                                 variant="ghost"
                                 class="w-full justify-start text-zinc-500 {{ $currentFolderId === $sidebarFolder->id ? 'bg-zinc-100 dark:bg-zinc-800 text-indigo-600' : '' }}"
+                                x-bind:class="over ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600' : ''"
                                 icon-leading="folder"
                             >
                                 {{ $sidebarFolder->name }}
@@ -427,11 +580,25 @@ new class extends Component {
                         <div
                             wire:key="folder-{{ $folder->id }}"
                             wire:click="selectFolder({{ $folder->id }})"
+                            x-data="{ over: false }"
+                            @dragover.prevent="over = true"
+                            @dragleave="over = false"
+                            @drop="over = false; $wire.selectedDocumentIds.length > 0 ? $wire.moveSelectedDocuments({{ $folder->id }}) : $wire.moveDocument($event.dataTransfer.getData('docId'), {{ $folder->id }})"
                             class="group cursor-pointer aspect-square bg-white dark:bg-zinc-900 rounded-3xl p-6 flex flex-col items-center justify-center border border-zinc-200 dark:border-zinc-800 shadow-sm transition-all hover:shadow-xl hover:shadow-indigo-500/5 hover:border-indigo-200"
+                            x-bind:class="over ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/10 scale-105' : ''"
                         >
-                            <div class="relative">
+                            <div class="relative group/folder">
                                 <flux:icon icon="folder" class="size-16 text-indigo-100 dark:text-indigo-900/30 group-hover:text-indigo-200 transition-colors" variant="solid" />
                                 <flux:icon icon="folder" class="absolute inset-0 size-16 text-indigo-500/10" />
+                                
+                                {{-- Botão Delete da Pasta --}}
+                                <button 
+                                    wire:click.stop="deleteFolder({{ $folder->id }})" 
+                                    class="absolute -top-2 -right-2 size-6 bg-white dark:bg-zinc-800 rounded-lg shadow-lg border border-zinc-200 dark:border-zinc-700 flex items-center justify-center text-zinc-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all hover:scale-110"
+                                    title="Excluir Pasta"
+                                >
+                                    <flux:icon icon="x-mark" class="size-3" />
+                                </button>
                             </div>
                             <span class="mt-4 text-sm font-bold text-zinc-700 dark:text-zinc-300 text-center truncate w-full">{{ $folder->name }}</span>
                             <span class="text-[10px] text-zinc-400 mt-1 font-medium">{{ $folder->documents_count ?? $folder->documents()->count() }} arquivos</span>
@@ -440,9 +607,24 @@ new class extends Component {
 
                     {{-- Documents --}}
                     @foreach($documents as $doc)
-                        <div wire:key="doc-{{ $doc->id }}" class="group relative aspect-square bg-white dark:bg-zinc-900 rounded-3xl overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-sm transition-all hover:shadow-xl hover:shadow-indigo-500/5">
+                        <div 
+                            wire:key="doc-{{ $doc->id }}" 
+                            draggable="true"
+                            @dragstart="event.dataTransfer.setData('docId', {{ $doc->id }})"
+                            class="group relative aspect-square bg-white dark:bg-zinc-900 rounded-3xl overflow-hidden border {{ in_array($doc->id, $selectedDocumentIds) ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-zinc-200 dark:border-zinc-800' }} shadow-sm transition-all hover:shadow-xl hover:shadow-indigo-500/5 cursor-grab active:cursor-grabbing"
+                        >
+                            {{-- Checkbox de Seleção --}}
+                            <div class="absolute top-3 left-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity {{ in_array($doc->id, $selectedDocumentIds) ? 'opacity-100' : '' }}">
+                                <input 
+                                    type="checkbox" 
+                                    wire:click.stop="toggleSelection({{ $doc->id }})" 
+                                    {{ in_array($doc->id, $selectedDocumentIds) ? 'checked' : '' }}
+                                    class="size-5 rounded-lg border-zinc-300 dark:border-zinc-700 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                >
+                            </div>
+
                             @if(str_contains($doc->mime_type, 'image'))
-                                <img src="{{ asset('storage/' . $doc->path) }}" class="w-full h-full object-cover transition-transform group-hover:scale-110" alt="{{ $doc->name }}">
+                                <img src="{{ asset('storage/' . $doc->path) }}" class="w-full h-full object-cover transition-transform group-hover:scale-110 pointer-events-none" alt="{{ $doc->name }}">
                             @else
                                 <div class="w-full h-full flex flex-col items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-800/30 group-hover:bg-indigo-50/50 transition-colors">
                                     <flux:icon icon="{{ $this->getIcon($doc->mime_type) }}" class="size-12 text-zinc-300 dark:text-zinc-600 mb-3" />
