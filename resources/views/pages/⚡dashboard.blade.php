@@ -428,7 +428,7 @@ new class extends Component {
                         <flux:icon icon="list-bullet" class="size-4" />
                     </button>
                 </div>
-                <x-selection-bar :$selectedDocumentIds :$view />
+                <x-selection-bar :$selectedDocumentIds :$view :$currentFolderId />
             </div>
         </div>
     </div>
@@ -439,7 +439,28 @@ new class extends Component {
         <x-sidebar-nav :$currentFolderId :$view :$isCreatingFolder :$search />
 
         {{-- Main Grid Area --}}
-        <div class="lg:col-span-3">
+        <div 
+            class="lg:col-span-3 min-h-[500px] relative transition-all"
+            x-data="{ isDragging: false }"
+            @dragover.prevent="isDragging = true"
+            @dragleave.prevent="isDragging = false"
+            @drop.prevent="
+                isDragging = false; 
+                if ($event.dataTransfer.files.length > 0) {
+                    $wire.upload('file', $event.dataTransfer.files[0])
+                }
+            "
+        >
+            {{-- Overlay de Drop Visual --}}
+            <div 
+                x-show="isDragging" 
+                class="absolute inset-0 z-30 bg-indigo-600/10 backdrop-blur-sm border-4 border-dashed border-indigo-500 rounded-3xl flex flex-col items-center justify-center animate-in fade-in duration-200"
+            >
+                <div class="bg-white dark:bg-zinc-900 p-8 rounded-full shadow-2xl scale-110">
+                    <flux:icon icon="cloud-arrow-up" variant="solid" class="size-12 text-indigo-600 animate-bounce" />
+                </div>
+                <span class="mt-6 text-xl font-black text-indigo-600">Solte para fazer o Upload</span>
+            </div>
 
             {{-- Erro de upload --}}
             @error('file')

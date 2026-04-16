@@ -1,4 +1,4 @@
-@props(['selectedDocumentIds', 'view'])
+@props(['selectedDocumentIds', 'view', 'currentFolderId' => null])
 
 @if(count($selectedDocumentIds) > 0)
     <div 
@@ -12,6 +12,9 @@
         @if($view === 'trash')
             <flux:button wire:click="restoreSelected" variant="ghost" size="xs" icon="arrow-path" class="text-green-600">Restaurar</flux:button>
         @else
+            @if($currentFolderId)
+                <flux:button wire:click="moveSelectedDocuments(null)" variant="ghost" size="xs" icon="arrow-up-on-square" class="text-indigo-600">Mover para o Início</flux:button>
+            @endif
             <flux:button wire:click="favoriteSelected" variant="ghost" size="xs" icon="star" class="text-indigo-600">Favoritar</flux:button>
         @endif
 

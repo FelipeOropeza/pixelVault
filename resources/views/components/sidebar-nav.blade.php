@@ -1,34 +1,7 @@
 @props(['currentFolderId', 'view', 'isCreatingFolder', 'search'])
 
 <aside class="lg:col-span-1 space-y-8">
-    {{-- Upload Section --}}
-    @if($view === 'all')
-        <div class="bg-indigo-600 rounded-3xl p-6 text-white shadow-xl shadow-indigo-500/20">
-            <h3 class="text-lg font-black mb-2 flex items-center gap-2">
-                <flux:icon icon="cloud-arrow-up" variant="solid" class="size-5" />
-                Upload
-            </h3>
-            <p class="text-xs text-indigo-100 mb-6 font-medium leading-relaxed">Arraste arquivos aqui ou use o botão abaixo para enviar.</p>
-            
-            <label class="block group cursor-pointer">
-                <input type="file" wire:model="file" class="hidden">
-                <div class="w-full py-4 bg-white/10 hover:bg-white/20 border-2 border-dashed border-white/30 rounded-2xl flex flex-col items-center justify-center transition-all group-hover:scale-[1.02] active:scale-95">
-                    <flux:icon icon="plus" class="size-6 mb-1" />
-                    <span class="text-xs font-black uppercase tracking-wider">Selecionar</span>
-                </div>
-            </label>
-
-            <div wire:loading wire:target="file" class="mt-4 w-full">
-                <div class="flex items-center gap-2 mb-2">
-                    <flux:spacer />
-                    <span class="text-[10px] font-black uppercase tracking-widest animate-pulse">Enviando...</span>
-                </div>
-                <div class="h-1.5 w-full bg-white/20 rounded-full overflow-hidden">
-                    <div class="h-full bg-white rounded-full animate-progress" style="width: 100%"></div>
-                </div>
-            </div>
-        </div>
-    @endif
+    {{-- Seção de Upload removida --}}
 
     {{-- Espaço em Nuvem --}}
     <div class="px-2">
@@ -94,9 +67,14 @@
         <div class="px-2 pt-4 border-t border-zinc-100 dark:border-zinc-800">
             <div class="space-y-1">
                 <flux:button
+                    x-data="{ over: false }"
+                    @dragover.prevent="over = true"
+                    @dragleave.prevent="over = false"
+                    @drop="over = false; $wire.selectedDocumentIds.length > 0 ? $wire.moveSelectedDocuments(null) : $wire.moveDocument($event.dataTransfer.getData('docId'), null)"
                     wire:click="selectFolder(null)"
                     variant="ghost"
-                    class="w-full justify-start text-zinc-600 dark:text-zinc-400 font-bold {{ $currentFolderId === null && $view === 'all' ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600' : '' }}"
+                    class="w-full justify-start text-zinc-600 dark:text-zinc-400 font-bold {{ $currentFolderId === null && $view === 'all' ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600' : '' }} transition-all"
+                    x-bind:class="over ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 scale-[1.02]' : ''"
                     icon-leading="home"
                 >
                     Todos os Arquivos
