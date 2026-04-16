@@ -6,21 +6,22 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    /**
+     * Run the migrations.
+     */
     public function up(): void
     {
-        Schema::create('documents', function (Blueprint $table) {
+        Schema::create('folders', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('parent_id')->nullable()->constrained('folders')->cascadeOnDelete();
             $table->string('name');
-            $table->string('path');
-            $table->unsignedBigInteger('size_bytes');
-            $table->string('mime_type');
             $table->timestamps();
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('documents');
+        Schema::dropIfExists('folders');
     }
 };
