@@ -4,15 +4,15 @@
     wire:key="doc-{{ $doc->id }}" 
     draggable="true"
     @dragstart="event.dataTransfer.setData('docId', {{ $doc->id }})"
-    class="group relative aspect-square bg-white dark:bg-zinc-900 rounded-3xl overflow-hidden border {{ in_array($doc->id, $selectedDocumentIds) ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-zinc-200 dark:border-zinc-800' }} shadow-sm transition-all hover:shadow-xl hover:shadow-indigo-500/5 cursor-grab active:cursor-grabbing"
+    class="group relative aspect-square bg-white dark:bg-zinc-900 rounded-3xl overflow-hidden border {{ in_array('file:'.$doc->id, $selectedDocumentIds) ? 'border-indigo-500 ring-4 ring-indigo-500/10' : 'border-zinc-200 dark:border-zinc-800' }} shadow-sm transition-all hover:shadow-xl hover:shadow-indigo-500/10 cursor-grab active:cursor-grabbing"
 >
     {{-- Checkbox de Seleção --}}
-    <div class="absolute top-3 left-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity {{ in_array($doc->id, $selectedDocumentIds) ? 'opacity-100' : '' }}">
+    <div class="absolute top-3 left-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity {{ in_array('file:'.$doc->id, $selectedDocumentIds) ? 'opacity-100' : '' }}">
         <input 
             type="checkbox" 
-            wire:click.stop="toggleSelection({{ $doc->id }})" 
-            {{ in_array($doc->id, $selectedDocumentIds) ? 'checked' : '' }}
-            class="size-5 rounded-lg border-zinc-300 dark:border-zinc-700 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+            wire:click.stop="toggleSelection({{ $doc->id }}, 'file')" 
+            {{ in_array('file:'.$doc->id, $selectedDocumentIds) ? 'checked' : '' }}
+            class="size-5 rounded-lg border-zinc-300 dark:border-zinc-700 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm"
         >
     </div>
 

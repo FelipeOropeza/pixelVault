@@ -4,14 +4,14 @@
     wire:key="doc-row-{{ $doc->id }}"
     draggable="true"
     @dragstart="event.dataTransfer.setData('docId', {{ $doc->id }})"
-    class="group hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors border-b border-zinc-100 dark:border-zinc-800 {{ in_array($doc->id, $selectedDocumentIds) ? 'bg-indigo-50/50 dark:bg-indigo-900/10' : '' }} cursor-grab active:cursor-grabbing"
+    class="group hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors border-b border-zinc-100 dark:border-zinc-800 {{ in_array('file:'.$doc->id, $selectedDocumentIds) ? 'bg-indigo-50/50 dark:bg-indigo-900/10' : '' }} cursor-grab active:cursor-grabbing"
 >
     <td class="py-4 pl-4 pr-3">
         <div class="flex items-center gap-3">
             <input 
                 type="checkbox" 
-                wire:click.stop="toggleSelection({{ $doc->id }})" 
-                {{ in_array($doc->id, $selectedDocumentIds) ? 'checked' : '' }}
+                wire:click.stop="toggleSelection({{ $doc->id }}, 'file')" 
+                {{ in_array('file:'.$doc->id, $selectedDocumentIds) ? 'checked' : '' }}
                 class="size-4 rounded border-zinc-300 dark:border-zinc-700 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
             >
             <flux:icon icon="{{ $this->getIcon($doc->mime_type) }}" class="size-6 text-zinc-400" />

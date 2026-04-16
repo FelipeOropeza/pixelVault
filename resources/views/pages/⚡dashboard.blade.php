@@ -21,12 +21,13 @@ new class extends Component {
     public array $selectedDocumentIds = [];
     public string $displayMode = 'grid'; // grid, list
 
-    public function toggleSelection(int $id): void
+    public function toggleSelection(int $id, string $type = 'file'): void
     {
-        if (in_array($id, $this->selectedDocumentIds)) {
-            $this->selectedDocumentIds = array_diff($this->selectedDocumentIds, [$id]);
+        $key = "$type:$id";
+        if (in_array($key, $this->selectedDocumentIds)) {
+            $this->selectedDocumentIds = array_diff($this->selectedDocumentIds, [$key]);
         } else {
-            $this->selectedDocumentIds[] = $id;
+            $this->selectedDocumentIds[] = $key;
         }
     }
 
@@ -39,7 +40,12 @@ new class extends Component {
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
-        $docs = $user->documents()->withTrashed()->whereIn('id', $this->selectedDocumentIds)->get();
+        
+        $fileIds = collect($this->selectedDocumentIds)->filter(fn($k) => str_starts_with($k, 'file:'))->map(fn($k) => (int) explode(':', $k)[1]);
+        $folderIds = collect($this->selectedDocumentIds)->filter(fn($k) => str_starts_with($k, 'folder:'))->map(fn($k) => (int) explode(':', $k)[1]);
+
+        $docs = $user->documents()->withTrashed()->whereIn('id', $fileIds)->get();
+        $folders = $user->folders()->whereIn('id', $folderIds)->get();
 
         foreach ($docs as $doc) {
             if ($this->view === 'trash') {
@@ -57,14 +63,16 @@ new class extends Component {
 
     public function favoriteSelected(): void
     {
-        Auth::user()->documents()->whereIn('id', $this->selectedDocumentIds)->update(['is_favorite' => true]);
+        $fileIds = collect($this->selectedDocumentIds)->filter(fn($k) => str_starts_with($k, 'file:'))->map(fn($k) => (int) explode(':', $k)[1]);
+        Auth::user()->documents()->whereIn('id', $fileIds)->update(['is_favorite' => true]);
         $this->clearSelection();
         $this->successMessage = 'Arquivos favoritados com sucesso.';
     }
 
     public function restoreSelected(): void
     {
-        Auth::user()->documents()->onlyTrashed()->whereIn('id', $this->selectedDocumentIds)->restore();
+        $fileIds = collect($this->selectedDocumentIds)->filter(fn($k) => str_starts_with($k, 'file:'))->map(fn($k) => (int) explode(':', $k)[1]);
+        Auth::user()->documents()->onlyTrashed()->whereIn('id', $fileIds)->restore();
         $this->clearSelection();
         $this->successMessage = 'Arquivos restaurados com sucesso.';
     }
@@ -73,7 +81,8 @@ new class extends Component {
     {
         if (empty($this->selectedDocumentIds)) return;
 
-        Auth::user()->documents()->withTrashed()->whereIn('id', $this->selectedDocumentIds)->update(['folder_id' => $targetFolderId]);
+        $fileIds = collect($this->selectedDocumentIds)->filter(fn($k) => str_starts_with($k, 'file:'))->map(fn($k) => (int) explode(':', $k)[1]);
+        Auth::user()->documents()->withTrashed()->whereIn('id', $fileIds)->update(['folder_id' => $targetFolderId]);
         
         $count = count($this->selectedDocumentIds);
         $this->clearSelection();
