@@ -20,6 +20,13 @@ new class extends Component {
     public bool $isCreatingFolder = false;
     public array $selectedDocumentIds = [];
     public string $displayMode = 'grid'; // grid, list
+    public ?Document $previewingImage = null;
+
+    public function previewImage(int $id): void
+    {
+        $this->previewingImage = Document::findOrFail($id);
+        $this->js('$dispatch("open-modal", { name: "image-preview" })');
+    }
 
     public function toggleSelection(int $id, string $type = 'file'): void
     {
@@ -547,4 +554,26 @@ new class extends Component {
         </div>
     </div>
     <x-selection-bar :$selectedDocumentIds :$view :$currentFolderId />
+
+    {{-- Modal de Preview de Imagem --}}
+    <flux:modal name="image-preview" variant="flyout" class="space-y-6 !p-0 overflow-hidden bg-black/95 backdrop-blur-xl border-none">
+        @if($previewingImage)
+            <div class="relative w-full h-full flex items-center justify-center p-4">
+                <img 
+                    src="{{ asset('storage/' . $previewingImage->path) }}" 
+                    class="max-w-full max-h-[85vh] rounded-2xl shadow-2xl ring-1 ring-white/10"
+                    alt="{{ $previewingImage->name }}"
+                >
+                
+                <div class="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+                    <span class="bg-white/10 backdrop-blur-md px-4 py-2 rounded-full text-white text-sm font-black tracking-wide border border-white/20">
+                        {{ $previewingImage->name }}
+                    </span>
+                    <span class="text-zinc-400 text-[10px] font-bold uppercase tracking-widest">
+                        {{ $this->formatBytes($previewingImage->size_bytes) }} • {{ $previewingImage->created_at->format('d/m/Y') }}
+                    </span>
+                </div>
+            </div>
+        @endif
+    </flux:modal>
 </div>

@@ -4,6 +4,7 @@
     wire:key="doc-row-{{ $doc->id }}"
     draggable="true"
     @dragstart="event.dataTransfer.setData('docId', {{ $doc->id }})"
+    @dblclick="{{ str_contains($doc->mime_type, 'image') ? '$wire.previewImage('.$doc->id.')' : '' }}"
     class="group hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors border-b border-zinc-100 dark:border-zinc-800 {{ in_array('file:'.$doc->id, $selectedDocumentIds) ? 'bg-indigo-50/50 dark:bg-indigo-900/10' : '' }} cursor-grab active:cursor-grabbing"
 >
     <td class="py-4 pl-4 pr-3">
