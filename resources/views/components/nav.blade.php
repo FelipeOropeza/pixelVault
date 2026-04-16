@@ -17,8 +17,7 @@
                     </flux:button>
 
                     <flux:menu class="w-48">
-                        <flux:menu.item href="/dashboard" icon="user">Meu Perfil</flux:menu.item>
-                        <flux:menu.item href="#" icon="cog">Configurações</flux:menu.item>
+                        {{-- Removidos links de Perfil e Configurações --}}
                         <flux:menu.separator />
                         <form method="POST" action="/logout">
                             @csrf

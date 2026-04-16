@@ -19,6 +19,7 @@ new class extends Component {
     public string $newFolderName = '';
     public bool $isCreatingFolder = false;
     public array $selectedDocumentIds = [];
+    public string $displayMode = 'grid'; // grid, list
 
     public function toggleSelection(int $id): void
     {
@@ -410,7 +411,25 @@ new class extends Component {
                 <flux:button wire:click="setFilterType('archive')" size="sm" variant="{{ $filterType === 'archive' ? 'primary' : 'ghost' }}" icon="archive-box" class="{{ $filterType === 'archive' ? 'bg-indigo-600' : '' }}">Arquivados</flux:button>
             </div>
 
-            <x-selection-bar :$selectedDocumentIds :$view />
+            <div class="flex items-center gap-4">
+                <div class="flex items-center bg-zinc-100 dark:bg-zinc-800 rounded-lg p-1">
+                    <button 
+                        wire:click="$set('displayMode', 'grid')" 
+                        class="p-1 px-2 rounded-md transition-all {{ $displayMode === 'grid' ? 'bg-white dark:bg-zinc-700 shadow-sm text-indigo-600' : 'text-zinc-500 hover:text-zinc-700' }}"
+                        title="Ver em Grade"
+                    >
+                        <flux:icon icon="squares-2x2" class="size-4" />
+                    </button>
+                    <button 
+                        wire:click="$set('displayMode', 'list')" 
+                        class="p-1 px-2 rounded-md transition-all {{ $displayMode === 'list' ? 'bg-white dark:bg-zinc-700 shadow-sm text-indigo-600' : 'text-zinc-500 hover:text-zinc-700' }}"
+                        title="Ver em Lista"
+                    >
+                        <flux:icon icon="list-bullet" class="size-4" />
+                    </button>
+                </div>
+                <x-selection-bar :$selectedDocumentIds :$view />
+            </div>
         </div>
     </div>
 
@@ -457,17 +476,44 @@ new class extends Component {
                     @endif
                 </div>
             @else
-                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {{-- Folders --}}
-                    @foreach($folders as $folder)
-                        <x-folder-card :$folder :$currentFolderId :$selectedDocumentIds />
-                    @endforeach
+                @if($displayMode === 'grid')
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {{-- Folders --}}
+                        @foreach($folders as $folder)
+                            <x-folder-card :$folder :$currentFolderId :$selectedDocumentIds />
+                        @endforeach
 
-                    {{-- Documents --}}
-                    @foreach($documents as $doc)
-                        <x-file-card :$doc :$selectedDocumentIds :$view />
-                    @endforeach
-                </div>
+                        {{-- Documents --}}
+                        @foreach($documents as $doc)
+                            <x-file-card :$doc :$selectedDocumentIds :$view />
+                        @endforeach
+                    </div>
+                @else
+                    <div class="bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 overflow-hidden shadow-sm">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-zinc-50/50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-800">
+                                    <th class="py-4 pl-4 pr-3 text-[10px] font-black uppercase tracking-widest text-zinc-400">Nome</th>
+                                    <th class="py-4 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-400">Tipo</th>
+                                    <th class="py-4 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-400">Tamanho</th>
+                                    <th class="py-4 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-400">Data</th>
+                                    <th class="py-4 pl-3 pr-4 text-right"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{-- Folders Row --}}
+                                @foreach($folders as $folder)
+                                    <x-folder-row :$folder :$selectedDocumentIds />
+                                @endforeach
+
+                                {{-- Documents Row --}}
+                                @foreach($documents as $doc)
+                                    <x-file-row :$doc :$selectedDocumentIds :$view />
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
             @endif
         </div>
     </div>
