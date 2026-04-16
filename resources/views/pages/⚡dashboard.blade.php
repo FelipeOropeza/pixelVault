@@ -428,7 +428,6 @@ new class extends Component {
                         <flux:icon icon="list-bullet" class="size-4" />
                     </button>
                 </div>
-                <x-selection-bar :$selectedDocumentIds :$view :$currentFolderId />
             </div>
         </div>
     </div>
@@ -538,4 +537,5 @@ new class extends Component {
             @endif
         </div>
     </div>
+    <x-selection-bar :$selectedDocumentIds :$view :$currentFolderId />
 </div>
