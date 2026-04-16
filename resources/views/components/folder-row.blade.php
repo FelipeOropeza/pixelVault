@@ -3,7 +3,12 @@
 <tr 
     wire:key="folder-row-{{ $folder->id }}"
     wire:click="selectFolder({{ $folder->id }})"
-    class="group cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors border-b border-zinc-100 dark:border-zinc-800"
+    x-data="{ over: false }"
+    @dragover.prevent="over = true"
+    @dragleave="over = false"
+    @drop="over = false; $wire.selectedDocumentIds.length > 0 ? $wire.moveSelectedDocuments({{ $folder->id }}) : $wire.moveDocument($event.dataTransfer.getData('docId'), {{ $folder->id }})"
+    class="group cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors border-b border-zinc-100 dark:border-zinc-800 transition-all"
+    x-bind:class="over ? 'bg-indigo-50 dark:bg-indigo-900/20 shadow-inner' : ''"
 >
     <td class="py-4 pl-4 pr-3">
         <div class="flex items-center gap-3">
