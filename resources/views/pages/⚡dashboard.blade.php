@@ -573,10 +573,6 @@ new class extends Component {
                         {{ $this->formatBytes($previewingImage->size_bytes) }} • {{ $previewingImage->created_at->format('d/m/Y') }}
                     </span>
                 </div>
-
-                <flux:modal.close>
-                    <flux:button variant="ghost" icon="x-mark" class="absolute top-4 right-4 text-white hover:bg-white/20 rounded-full" />
-                </flux:modal.close>
             </div>
         @endif
     </flux:modal>
