@@ -57,18 +57,18 @@
                 />
             @else
                 <flux:button
-                    wire:click="toggleFavorite({{ $doc->id }})"
+                    wire:click.stop="toggleFavorite({{ $doc->id }})"
                     variant="ghost"
                     size="sm"
                     icon="star"
                     class="text-white {{ $doc->is_favorite ? 'text-yellow-400 hover:bg-yellow-400/20' : 'hover:bg-white/20' }}"
                     title="Favoritar"
                 />
-                <a href="{{ asset('storage/' . $doc->path) }}" target="_blank">
+                <a href="{{ asset('storage/' . $doc->path) }}" target="_blank" wire:click.stop>
                     <flux:button variant="ghost" size="sm" icon="eye" class="text-white hover:bg-white/20" title="Visualizar" />
                 </a>
                 <flux:button
-                    wire:click="deleteDocument({{ $doc->id }})"
+                    wire:click.stop="deleteDocument({{ $doc->id }})"
                     wire:confirm="Mover para a lixeira?"
                     wire:loading.attr="disabled"
                     variant="ghost"

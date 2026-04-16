@@ -25,7 +25,7 @@ new class extends Component {
     public function previewImage(int $id): void
     {
         $this->previewingImage = Document::findOrFail($id);
-        $this->js('$dispatch("open-modal", { name: "image-preview" })');
+        $this->modal('image-preview')->show();
     }
 
     public function toggleSelection(int $id, string $type = 'file'): void
@@ -556,23 +556,27 @@ new class extends Component {
     <x-selection-bar :$selectedDocumentIds :$view :$currentFolderId />
 
     {{-- Modal de Preview de Imagem --}}
-    <flux:modal name="image-preview" variant="flyout" class="space-y-6 !p-0 overflow-hidden bg-black/95 backdrop-blur-xl border-none">
+    <flux:modal name="image-preview" class="max-w-5xl !p-0 overflow-hidden bg-white dark:bg-zinc-900 border-none">
         @if($previewingImage)
-            <div class="relative w-full h-full flex items-center justify-center p-4">
+            <div class="relative w-full aspect-video md:aspect-auto md:h-[80vh] flex flex-col items-center justify-center bg-black">
                 <img 
                     src="{{ asset('storage/' . $previewingImage->path) }}" 
-                    class="max-w-full max-h-[85vh] rounded-2xl shadow-2xl ring-1 ring-white/10"
+                    class="max-w-full max-h-full object-contain shadow-2xl"
                     alt="{{ $previewingImage->name }}"
                 >
                 
-                <div class="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
-                    <span class="bg-white/10 backdrop-blur-md px-4 py-2 rounded-full text-white text-sm font-black tracking-wide border border-white/20">
+                <div class="absolute bottom-6 left-0 right-0 flex flex-col items-center gap-2 bg-gradient-to-t from-black/60 to-transparent pb-4 pt-10">
+                    <span class="text-white text-lg font-black tracking-tight drop-shadow-lg">
                         {{ $previewingImage->name }}
                     </span>
-                    <span class="text-zinc-400 text-[10px] font-bold uppercase tracking-widest">
+                    <span class="text-zinc-300 text-xs font-bold uppercase tracking-widest drop-shadow-md">
                         {{ $this->formatBytes($previewingImage->size_bytes) }} • {{ $previewingImage->created_at->format('d/m/Y') }}
                     </span>
                 </div>
+
+                <flux:modal.close>
+                    <flux:button variant="ghost" icon="x-mark" class="absolute top-4 right-4 text-white hover:bg-white/20 rounded-full" />
+                </flux:modal.close>
             </div>
         @endif
     </flux:modal>
