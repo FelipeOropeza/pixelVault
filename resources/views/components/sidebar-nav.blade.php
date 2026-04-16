@@ -46,7 +46,7 @@
             <div class="w-full bg-zinc-200 dark:bg-zinc-700 h-1.5 rounded-full overflow-hidden mb-3">
                 <div
                     class="h-full rounded-full transition-all duration-500 {{ $this->getPercentage() >= 90 ? 'bg-red-500' : 'bg-indigo-600' }}"
-                    style="width: {{ $this->getPercentage() }}%"
+                    @style(['width: ' . $this->getPercentage() . '%'])
                 ></div>
             </div>
 
