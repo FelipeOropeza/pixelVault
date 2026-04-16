@@ -2,8 +2,6 @@
 
 **PixelVault** é uma plataforma premium de gerenciamento de arquivos e documentos, construída com oque há de mais moderno no ecossistema Laravel. Focada em uma experiência de usuário (UX) excepcional, a aplicação oferece uma interface fluida, reativa e visualmente deslumbrante.
 
-![PixelVault Dashboard](https://raw.githubusercontent.com/FelipeOropeza/pixelVault/main/screenshot.png) *(Preview Placeholder)*
-
 ## 🚀 Tecnologias Core
 
 O projeto utiliza as versões mais recentes das tecnologias líderes de mercado:
@@ -12,7 +10,6 @@ O projeto utiliza as versões mais recentes das tecnologias líderes de mercado:
 *   **Reatividade:** Livewire 4 (SFC - Single File Components)
 *   **UI Engine:** [Flux UI](https://fluxui.dev/)
 *   **Styling:** Tailwind CSS com estética Glassmorphism
-*   **Servidor de Alta Performance:** FrankenPHP / Caddy
 
 ## ✨ Funcionalidades Principais
 
