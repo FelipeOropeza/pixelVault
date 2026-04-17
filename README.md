@@ -20,7 +20,9 @@ O projeto utiliza as versões mais recentes das tecnologias líderes de mercado:
 *   **Preview de Imagens:** Visualize suas imagens em tela cheia com um clique duplo rápido.
 *   **Sistema de Lixeira:** Exclusão segura com suporte a `SoftDeletes`, permitindo restaurar arquivos ou pastas acidentalmente removidas.
 *   **Gestão de Armazenamento:** Painel visual na barra lateral indicando o uso total de armazenamento da conta.
-*   **Favoritos:** Marque seus documentos mais importantes para acesso rápido.
+*   **Ações em Massa:** Selecione múltiplos arquivos para favoritar, excluir ou mover simultaneamente usando a barra de ferramentas flutuante.
+*   **Movimentação por Drag & Drop:** Organize sua biblioteca arrastando arquivos diretamente para dentro de pastas na visualização principal.
+*   **Favoritos:** Marque seus documentos mais importantes para acesso rápido através da seção dedicada.
 
 ## 🛠️ Requisitos e Instalação
 
