@@ -21,6 +21,11 @@ new class extends Component
                 O PixelVault é o lugar perfeito para organizar suas memórias visuais de forma minimalista.
             </p>
 
+            @auth
+            <flux:button href="/dashboard" variant="primary" class="w-full sm:w-auto px-8 py-3">
+                Ir para o Dashboard
+            </flux:button>
+            @else
             <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <flux:button href="/register" variant="primary" class="w-full sm:w-auto px-8 py-3">
                     Começar agora
@@ -29,6 +34,7 @@ new class extends Component
                     Fazer Login
                 </flux:button>
             </div>
+            @endauth
         </div>
     </section>
 

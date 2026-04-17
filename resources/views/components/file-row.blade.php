@@ -3,15 +3,16 @@
 <tr 
     wire:key="doc-row-{{ $doc->id }}"
     draggable="true"
-    @dragstart="event.dataTransfer.setData('docId', {{ $doc->id }})"
-    @dblclick="{{ str_contains($doc->mime_type, 'image') ? '$wire.previewImage('.$doc->id.')' : '' }}"
+    @dragstart="event.dataTransfer.setData('docId', '{{ $doc->id }}')"
+    @dblclick="{{ str_contains($doc->mime_type, 'image') ? '$dispatch(\'preview-image\', { id: '.$doc->id.' })' : '' }}"
     class="group hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors border-b border-zinc-100 dark:border-zinc-800 {{ in_array('file:'.$doc->id, $selectedDocumentIds) ? 'bg-indigo-50/50 dark:bg-indigo-900/10' : '' }} cursor-grab active:cursor-grabbing"
 >
     <td class="py-4 pl-4 pr-3">
         <div class="flex items-center gap-3">
             <input 
                 type="checkbox" 
-                wire:click.stop="toggleSelection({{ $doc->id }}, 'file')" 
+                wire:key="checkbox-file-row-{{ $doc->id }}-{{ in_array('file:'.$doc->id, $selectedDocumentIds) ? '1' : '0' }}"
+                @click.stop="$dispatch('toggle-selection', { id: {{ $doc->id }}, type: 'file' })"
                 {{ in_array('file:'.$doc->id, $selectedDocumentIds) ? 'checked' : '' }}
                 class="size-4 rounded border-zinc-300 dark:border-zinc-700 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
             >
@@ -32,7 +33,9 @@
                 <flux:button wire:click="deleteDocument({{ $doc->id }})" variant="ghost" size="xs" icon="trash" class="text-red-600" />
             @else
                 <flux:button wire:click="toggleFavorite({{ $doc->id }})" variant="ghost" size="xs" icon="star" class="{{ $doc->is_favorite ? 'text-yellow-400' : 'text-zinc-400' }}" />
+                <flux:button x-on:click="$dispatch('edit-name', { id: {{ $doc->id }}, type: 'file' })" variant="ghost" size="xs" icon="pencil-square" class="text-zinc-400 hover:text-indigo-600" />
                 <flux:button href="{{ asset('storage/' . $doc->path) }}" target="_blank" variant="ghost" size="xs" icon="eye" />
+                <flux:button wire:click="downloadDocument({{ $doc->id }})" variant="ghost" size="xs" icon="arrow-down-tray" />
                 <flux:button wire:click="deleteDocument({{ $doc->id }})" variant="ghost" size="xs" icon="trash" class="text-zinc-400 hover:text-red-500" />
             @endif
         </div>

@@ -3,15 +3,16 @@
 <div 
     wire:key="doc-{{ $doc->id }}" 
     draggable="true"
-    @dragstart="event.dataTransfer.setData('docId', {{ $doc->id }})"
+    @dragstart="event.dataTransfer.setData('docId', '{{ $doc->id }}')"
     class="group relative aspect-square bg-white dark:bg-zinc-900 rounded-3xl overflow-hidden border {{ in_array('file:'.$doc->id, $selectedDocumentIds) ? 'border-indigo-500 ring-4 ring-indigo-500/10' : 'border-zinc-200 dark:border-zinc-800' }} shadow-sm transition-all hover:shadow-xl hover:shadow-indigo-500/10 cursor-grab active:cursor-grabbing"
-    @dblclick="{{ str_contains($doc->mime_type, 'image') ? '$wire.previewImage('.$doc->id.')' : '' }}"
+    @dblclick="{{ str_contains($doc->mime_type, 'image') ? '$dispatch(\'preview-image\', { id: '.$doc->id.' })' : '' }}"
 >
     {{-- Checkbox de Seleção --}}
     <div class="absolute top-3 left-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity {{ in_array('file:'.$doc->id, $selectedDocumentIds) ? 'opacity-100' : '' }}">
         <input 
             type="checkbox" 
-            wire:click.stop="toggleSelection({{ $doc->id }}, 'file')" 
+            wire:key="checkbox-file-{{ $doc->id }}-{{ in_array('file:'.$doc->id, $selectedDocumentIds) ? '1' : '0' }}"
+            @click.stop="$dispatch('toggle-selection', { id: {{ $doc->id }}, type: 'file' })"
             {{ in_array('file:'.$doc->id, $selectedDocumentIds) ? 'checked' : '' }}
             class="size-5 rounded-lg border-zinc-300 dark:border-zinc-700 text-indigo-600 focus:ring-indigo-500 cursor-pointer shadow-sm"
         >
@@ -64,9 +65,25 @@
                     class="text-white {{ $doc->is_favorite ? 'text-yellow-400 hover:bg-yellow-400/20' : 'hover:bg-white/20' }}"
                     title="Favoritar"
                 />
+                <flux:button
+                    x-on:click.stop="$dispatch('edit-name', { id: {{ $doc->id }}, type: 'file' })"
+                    variant="ghost"
+                    size="sm"
+                    icon="pencil-square"
+                    class="text-white hover:bg-white/20"
+                    title="Renomear"
+                />
                 <a href="{{ asset('storage/' . $doc->path) }}" target="_blank" wire:click.stop>
                     <flux:button variant="ghost" size="sm" icon="eye" class="text-white hover:bg-white/20" title="Visualizar" />
                 </a>
+                <flux:button
+                    wire:click.stop="downloadDocument({{ $doc->id }})"
+                    variant="ghost"
+                    size="sm"
+                    icon="arrow-down-tray"
+                    class="text-white hover:bg-white/20"
+                    title="Baixar Arquivo"
+                />
                 <flux:button
                     wire:click.stop="deleteDocument({{ $doc->id }})"
                     wire:confirm="Mover para a lixeira?"

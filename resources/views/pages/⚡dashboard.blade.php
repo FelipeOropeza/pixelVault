@@ -1,38 +1,70 @@
 <?php // resources/views/pages/⚡dashboard.blade.php
 
 use Livewire\WithFileUploads;
+use Livewire\WithPagination;
 use Livewire\Component;
 use App\Models\Document;
-use App\Models\Folder;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
 
 new class extends Component {
-    use WithFileUploads;
+    use WithFileUploads, WithPagination;
+    use \App\Traits\HasFileHelpers;
 
-    public $file;
-    public string $successMessage = '';
-    public string $search = '';
-    public ?int $currentFolderId = null;
-    public string $view = 'all'; // all, favorites, trash
-    public string $filterType = 'all'; // all, image, video, pdf, audio, archive
-    public string $newFolderName = '';
-    public bool $isCreatingFolder = false;
     public array $selectedDocumentIds = [];
     public string $displayMode = 'grid'; // grid, list
-    public ?Document $previewingImage = null;
+    public string $successMessage = '';
 
-    public function previewImage(int $id): void
+    #[\Livewire\Attributes\Url]
+    public string $view = 'all';
+    
+    #[\Livewire\Attributes\Url]
+    public string $search = '';
+    
+    #[\Livewire\Attributes\Url]
+    public ?int $currentFolderId = null;
+    
+    #[\Livewire\Attributes\Url]
+    public string $filterType = 'all';
+
+    #[\Livewire\Attributes\On('dashboard-refresh')]
+    public function refresh($view = null, $search = null, $folderId = null, $filterType = null): void
     {
-        $this->previewingImage = Document::findOrFail($id);
-        $this->modal('image-preview')->show();
+        if ($view !== null) $this->view = $view;
+        if ($search !== null) $this->search = $search;
+        if ($folderId !== null || $view !== null) $this->currentFolderId = $folderId;
+        if ($filterType !== null) $this->filterType = $filterType;
+        
+        $this->resetPage();
+    }
+
+    #[\Livewire\Attributes\On('notify')]
+    public function notify(string $message): void
+    {
+        $this->successMessage = $message;
+    }
+
+    #[\Livewire\Attributes\On('toggle-selection')]
+    public function handleToggleSelection(int $id, string $type = 'file'): void
+    {
+        $this->toggleSelection($id, $type);
+    }
+
+    #[\Livewire\Attributes\On('drop-on-folder')]
+    public function handleDropOnFolder(int $folderId, string $docId): void
+    {
+        if (!empty($this->selectedDocumentIds)) {
+            $this->moveSelectedDocuments($folderId);
+        } elseif ($docId) {
+            $this->moveDocument((int) $docId, $folderId);
+        }
     }
 
     public function toggleSelection(int $id, string $type = 'file'): void
     {
         $key = "$type:$id";
         if (in_array($key, $this->selectedDocumentIds)) {
-            $this->selectedDocumentIds = array_diff($this->selectedDocumentIds, [$key]);
+            $this->selectedDocumentIds = array_values(array_diff($this->selectedDocumentIds, [$key]));
         } else {
             $this->selectedDocumentIds[] = $key;
         }
@@ -54,18 +86,35 @@ new class extends Component {
         $docs = $user->documents()->withTrashed()->whereIn('id', $fileIds)->get();
         $folders = $user->folders()->whereIn('id', $folderIds)->get();
 
-        foreach ($docs as $doc) {
-            if ($this->view === 'trash') {
+        if ($this->view === 'trash') {
+            $totalFreed = 0;
+            foreach ($docs as $doc) {
                 Storage::disk('public')->delete($doc->path);
-                $user->reduceStorageUsage($doc->size_bytes);
-                $doc->forceDelete();
+                $totalFreed += $doc->size_bytes;
+            }
+            if ($totalFreed > 0) {
+                $user->reduceStorageUsage($totalFreed);
+            }
+            $user->documents()->whereIn('id', $fileIds)->forceDelete();
+        } else {
+            $user->documents()->whereIn('id', $fileIds)->delete();
+        }
+
+        if ($folderIds->isNotEmpty()) {
+            if ($this->view === 'trash') {
+                $user->folders()->whereIn('id', $folderIds)->forceDelete(); // Pastas nem deveriam estar na lixeira, mas caso estejam.
             } else {
-                $doc->delete();
+                // Soft delete manual dos documentos das pastas selecionadas
+                foreach ($folders as $folder) {
+                    $folder->documents()->update(['deleted_at' => now()]);
+                }
+                $user->folders()->whereIn('id', $folderIds)->delete();
             }
         }
 
         $this->clearSelection();
-        $this->successMessage = count($docs) . ' arquivos processados.';
+        $this->dispatch('notify', ($docs->count() + $folders->count()) . ' itens processados.');
+        $this->dispatch('dashboard-refresh');
     }
 
     public function favoriteSelected(): void
@@ -73,7 +122,8 @@ new class extends Component {
         $fileIds = collect($this->selectedDocumentIds)->filter(fn($k) => str_starts_with($k, 'file:'))->map(fn($k) => (int) explode(':', $k)[1]);
         Auth::user()->documents()->whereIn('id', $fileIds)->update(['is_favorite' => true]);
         $this->clearSelection();
-        $this->successMessage = 'Arquivos favoritados com sucesso.';
+        $this->dispatch('notify', 'Arquivos favoritados com sucesso.');
+        $this->dispatch('dashboard-refresh');
     }
 
     public function restoreSelected(): void
@@ -81,7 +131,8 @@ new class extends Component {
         $fileIds = collect($this->selectedDocumentIds)->filter(fn($k) => str_starts_with($k, 'file:'))->map(fn($k) => (int) explode(':', $k)[1]);
         Auth::user()->documents()->onlyTrashed()->whereIn('id', $fileIds)->restore();
         $this->clearSelection();
-        $this->successMessage = 'Arquivos restaurados com sucesso.';
+        $this->dispatch('notify', 'Arquivos restaurados com sucesso.');
+        $this->dispatch('dashboard-refresh');
     }
 
     public function moveSelectedDocuments(?int $targetFolderId): void
@@ -89,19 +140,25 @@ new class extends Component {
         if (empty($this->selectedDocumentIds)) return;
 
         $fileIds = collect($this->selectedDocumentIds)->filter(fn($k) => str_starts_with($k, 'file:'))->map(fn($k) => (int) explode(':', $k)[1]);
-        Auth::user()->documents()->withTrashed()->whereIn('id', $fileIds)->update(['folder_id' => $targetFolderId]);
+        $folderIds = collect($this->selectedDocumentIds)->filter(fn($k) => str_starts_with($k, 'folder:'))->map(fn($k) => (int) explode(':', $k)[1]);
+
+        if ($fileIds->isNotEmpty()) {
+            Auth::user()->documents()->withTrashed()->whereIn('id', $fileIds)->update(['folder_id' => $targetFolderId]);
+        }
+
+        if ($folderIds->isNotEmpty()) {
+            // Evitar mover uma pasta para dentro dela mesma
+            if ($targetFolderId && $folderIds->contains($targetFolderId)) {
+                $this->addError('general', 'Não é possível mover uma pasta para dentro de si mesma.');
+                return;
+            }
+            Auth::user()->folders()->whereIn('id', $folderIds)->update(['parent_id' => $targetFolderId]);
+        }
         
         $count = count($this->selectedDocumentIds);
         $this->clearSelection();
-        $this->successMessage = "$count arquivos movidos com sucesso!";
-    }
-
-    public function moveDocument(int $docId, ?int $targetFolderId): void
-    {
-        $doc = Auth::user()->documents()->withTrashed()->findOrFail($docId);
-        $doc->update(['folder_id' => $targetFolderId]);
-
-        $this->successMessage = 'Arquivo movido com sucesso!';
+        $this->dispatch('notify', "$count itens movidos com sucesso!");
+        $this->dispatch('dashboard-refresh');
     }
 
     public function deleteFolder(int $id, bool $force = false): void
@@ -113,63 +170,17 @@ new class extends Component {
             return;
         }
 
-        // Move arquivos para a lixeira se houver
         if ($folder->documents_count > 0) {
             $folder->documents()->update(['deleted_at' => now()]);
         }
 
         $folder->delete();
-        $this->successMessage = 'Pasta excluída com sucesso!';
+        $this->dispatch('notify', 'Pasta excluída com sucesso!');
         
         if ($this->currentFolderId === $id) {
-            $this->selectFolder(null);
+            $this->currentFolderId = null;
         }
-    }
-
-    public function updatedFile(): void
-    {
-        $this->validate([
-            'file' => 'required|file|max:20480', // Max 20MB
-        ]);
-
-        /** @var \App\Models\User $user */
-        $user = Auth::user();
-        $size = $this->file->getSize();
-
-        if (!$user->hasAvailableStorage($size)) {
-            $this->addError('file', 'Sem espaço disponível. Faça um upgrade de plano!');
-            $this->file = null;
-            return;
-        }
-
-        $path = $this->file->store('documents/' . $user->id, 'public');
-
-        Document::create([
-            'user_id'   => $user->id,
-            'folder_id' => $this->currentFolderId,
-            'name'      => $this->file->getClientOriginalName(),
-            'path'      => $path,
-            'size_bytes'=> $size,
-            'mime_type' => $this->file->getMimeType(),
-        ]);
-
-        $user->addStorageUsage($size);
-        $this->file = null;
-        $this->successMessage = 'Arquivo enviado com sucesso!';
-    }
-
-    public function createFolder(): void
-    {
-        if (empty($this->newFolderName)) return;
-
-        Auth::user()->folders()->create([
-            'name' => $this->newFolderName,
-            'parent_id' => $this->currentFolderId,
-        ]);
-
-        $this->newFolderName = '';
-        $this->isCreatingFolder = false;
-        $this->successMessage = 'Pasta criada com sucesso!';
+        $this->dispatch('dashboard-refresh');
     }
 
     public function toggleFavorite(int $id): void
@@ -188,30 +199,80 @@ new class extends Component {
             Storage::disk('public')->delete($doc->path);
             $user->reduceStorageUsage($doc->size_bytes);
             $doc->forceDelete();
-            $this->successMessage = 'Arquivo removido definitivamente.';
+            $this->dispatch('notify', 'Arquivo removido definitivamente.');
         } else {
             $doc->delete();
-            $this->successMessage = 'Arquivo movido para a lixeira.';
+            $this->dispatch('notify', 'Arquivo movido para a lixeira.');
         }
+        $this->dispatch('dashboard-refresh');
     }
 
     public function restoreDocument(int $id): void
     {
         Auth::user()->documents()->onlyTrashed()->findOrFail($id)->restore();
-        $this->successMessage = 'Arquivo restaurado com sucesso.';
+        $this->dispatch('notify', 'Arquivo restaurado com sucesso.');
+        $this->dispatch('dashboard-refresh');
     }
 
-    public function setView(string $view): void
+    public function moveDocument(int $docId, ?int $targetFolderId): void
     {
-        $this->view = $view;
-        $this->currentFolderId = null;
-        $this->search = '';
+        $doc = Auth::user()->documents()->withTrashed()->findOrFail($docId);
+        $doc->update(['folder_id' => $targetFolderId]);
+        $this->dispatch('notify', 'Arquivo movido com sucesso!');
+        $this->dispatch('dashboard-refresh');
     }
 
-    public function selectFolder(?int $id): void
+    #[\Livewire\Attributes\On('files-uploaded')]
+    public function handleUpload(array $uploads): void
     {
-        $this->currentFolderId = $id;
-        $this->view = 'all';
+        // O Livewire 4 SFC/Island pode passar os arquivos temporários via evento
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+        
+        $totalSize = collect($uploads)->sum(fn($file) => $file->getSize());
+
+        if (!$user->hasAvailableStorage($totalSize)) {
+            $this->dispatch('notify', 'Sem espaço disponível para todos os arquivos. Faça um upgrade!');
+            return;
+        }
+
+        $documentsData = [];
+        foreach ($uploads as $file) {
+            $path = $file->store('documents/' . $user->id, 'public');
+
+            $documentsData[] = [
+                'user_id'    => $user->id,
+                'folder_id'  => $this->currentFolderId,
+                'name'       => $file->getClientOriginalName(),
+                'path'       => $path,
+                'size_bytes' => $file->getSize(),
+                'mime_type'  => $file->getMimeType(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+
+        if (!empty($documentsData)) {
+            Document::insert($documentsData);
+            $user->addStorageUsage($totalSize);
+        }
+
+        $this->dispatch('notify', 'Arquivos enviados com sucesso!');
+        $this->dispatch('dashboard-refresh');
+    }
+
+    public function downloadDocument(int $id)
+    {
+        $doc = Auth::user()->documents()->withTrashed()->findOrFail($id);
+        
+        $path = Storage::disk('public')->path($doc->path);
+
+        if (!file_exists($path)) {
+            $this->addError('general', 'Arquivo não encontrado no servidor.');
+            return null;
+        }
+
+        return response()->download($path, $doc->name);
     }
 
     public function getIcon(string $mime): string
@@ -224,27 +285,10 @@ new class extends Component {
         return 'document';
     }
 
-    public function formatBytes(int $bytes, int $precision = 2): string
-    {
-        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        $bytes = max($bytes, 0);
-        $pow   = floor(($bytes ? log($bytes) : 0) / log(1024));
-        $pow   = min($pow, count($units) - 1);
-        $bytes /= (1 << (10 * $pow));
-        return round($bytes, $precision) . ' ' . $units[$pow];
-    }
-
-    public function getPercentage(): float
-    {
-        /** @var \App\Models\User $user */
-        $user = Auth::user();
-        if (!$user->plan || $user->plan->storage_limit_bytes === 0) return 0;
-        return min(($user->storage_used_bytes / $user->plan->storage_limit_bytes) * 100, 100);
-    }
-
     public function setFilterType(string $type): void
     {
         $this->filterType = $type;
+        $this->resetPage();
     }
 
     public function with(): array
@@ -301,48 +345,15 @@ new class extends Component {
         }
 
         return [
-            'documents' => $query->latest()->get(),
+            'documents' => $query->latest()->paginate(24),
             'folders'   => $folders,
-            'breadcrumbs' => $this->getBreadcrumbs(),
         ];
-    }
-
-    protected function getBreadcrumbs(): array
-    {
-        $breadcrumbs = [];
-        $current = $this->currentFolderId ? Folder::find($this->currentFolderId) : null;
-
-        while ($current) {
-            array_unshift($breadcrumbs, $current);
-            $current = $current->parent;
-        }
-
-        return $breadcrumbs;
     }
 };
 ?>
 
 <div class="max-w-7xl mx-auto py-12 px-6">
 
-    {{-- Loading Overlay de Upload --}}
-    <div
-        wire:loading
-        wire:target="file"
-        class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-zinc-900/70 backdrop-blur-sm"
-    >
-        <div class="bg-white dark:bg-zinc-900 rounded-3xl p-10 shadow-2xl flex flex-col items-center gap-5 border border-zinc-200 dark:border-zinc-800">
-            <div class="relative size-16">
-                <svg class="animate-spin size-16 text-indigo-600" viewBox="0 0 24 24" fill="none">
-                    <circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/>
-                    <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v4l4-4-4-4v4a12 12 0 00-12 12h4z"/>
-                </svg>
-            </div>
-            <div class="text-center">
-                <p class="text-lg font-black text-zinc-900 dark:text-white">Enviando arquivo...</p>
-                <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Aguarde, seu arquivo está sendo processado.</p>
-            </div>
-        </div>
-    </div>
 
     {{-- Notificação de sucesso --}}
     @if($successMessage)
@@ -363,106 +374,32 @@ new class extends Component {
         </div>
     @endif
 
-    {{-- Header --}}
-    <div class="flex flex-col gap-8 mb-12">
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div class="space-y-1">
-                <div class="flex items-center gap-3">
-                    @if($currentFolderId)
-                        <flux:button wire:click="selectFolder(null)" variant="ghost" size="sm" icon="arrow-left" class="text-zinc-400 hover:text-indigo-600 p-0" />
-                    @endif
-                    <h1 class="text-4xl font-black tracking-tight text-zinc-900 dark:text-white leading-none">Meu Cofre</h1>
-                </div>
-                <div 
-                class="flex items-center gap-2 text-zinc-500 dark:text-zinc-400 font-medium tracking-tight"
-                x-data="{ over: false }"
-                @dragover.prevent="over = true"
-                @dragleave="over = false"
-                @drop="over = false; $wire.selectedDocumentIds.length > 0 ? $wire.moveSelectedDocuments(null) : $wire.moveDocument($event.dataTransfer.getData('docId'), null)"
-                x-bind:class="over ? 'text-indigo-600 scale-105 transition-all' : ''"
-            >
-                <button wire:click="selectFolder(null)" class="hover:text-indigo-600 transition-colors">Início</button>
-                @foreach($breadcrumbs as $breadcrumb)
-                    <flux:icon icon="chevron-right" class="size-3" />
-                    <button 
-                        @dragover.prevent="over = true"
-                        @dragleave="over = false"
-                        @drop="over = false; $wire.selectedDocumentIds.length > 0 ? $wire.moveSelectedDocuments({{ $breadcrumb->id }}) : $wire.moveDocument($event.dataTransfer.getData('docId'), {{ $breadcrumb->id }})"
-                        wire:click="selectFolder({{ $breadcrumb->id }})" 
-                        class="hover:text-indigo-600 transition-colors"
-                    >
-                        {{ $breadcrumb->name }}
-                    </button>
-                @endforeach
-            </div>
-            </div>
-
-            <div class="flex items-center gap-3">
-                <div class="relative group">
-                    <flux:input
-                        wire:model.live.debounce.300ms="search"
-                        placeholder="Pesquisar em tudo..."
-                        icon="magnifying-glass"
-                        class="w-64"
-                    />
-                </div>
-                <label class="cursor-pointer" wire:loading.attr="disabled" wire:target="file">
-                    <input type="file" wire:model="file" id="file-upload" class="hidden">
-                    <flux:button as="div" variant="primary" icon-leading="plus" class="bg-indigo-600 hover:bg-indigo-700 h-11 px-6 shadow-lg shadow-indigo-500/20">
-                        <span wire:loading.remove wire:target="file">Novo Upload</span>
-                        <span wire:loading wire:target="file">Enviando...</span>
-                    </flux:button>
-                </label>
-            </div>
-        </div>
-
-        {{-- Filtros de Extensão --}}
-        <div class="flex flex-wrap items-center justify-between gap-4">
-            <div class="flex flex-wrap items-center gap-2">
-                <flux:button wire:click="setFilterType('all')" size="sm" variant="{{ $filterType === 'all' ? 'primary' : 'ghost' }}" class="{{ $filterType === 'all' ? 'bg-indigo-600' : '' }}">Todos</flux:button>
-                <flux:button wire:click="setFilterType('image')" size="sm" variant="{{ $filterType === 'image' ? 'primary' : 'ghost' }}" icon="photo" class="{{ $filterType === 'image' ? 'bg-indigo-600' : '' }}">Imagens</flux:button>
-                <flux:button wire:click="setFilterType('video')" size="sm" variant="{{ $filterType === 'video' ? 'primary' : 'ghost' }}" icon="video-camera" class="{{ $filterType === 'video' ? 'bg-indigo-600' : '' }}">Vídeos</flux:button>
-                <flux:button wire:click="setFilterType('pdf')" size="sm" variant="{{ $filterType === 'pdf' ? 'primary' : 'ghost' }}" icon="document-text" class="{{ $filterType === 'pdf' ? 'bg-indigo-600' : '' }}">PDFs</flux:button>
-                <flux:button wire:click="setFilterType('audio')" size="sm" variant="{{ $filterType === 'audio' ? 'primary' : 'ghost' }}" icon="musical-note" class="{{ $filterType === 'audio' ? 'bg-indigo-600' : '' }}">Áudios</flux:button>
-                <flux:button wire:click="setFilterType('archive')" size="sm" variant="{{ $filterType === 'archive' ? 'primary' : 'ghost' }}" icon="archive-box" class="{{ $filterType === 'archive' ? 'bg-indigo-600' : '' }}">Arquivados</flux:button>
-            </div>
-
-            <div class="flex items-center gap-4">
-                <div class="flex items-center bg-zinc-100 dark:bg-zinc-800 rounded-lg p-1">
-                    <button 
-                        wire:click="$set('displayMode', 'grid')" 
-                        class="p-1 px-2 rounded-md transition-all {{ $displayMode === 'grid' ? 'bg-white dark:bg-zinc-700 shadow-sm text-indigo-600' : 'text-zinc-500 hover:text-zinc-700' }}"
-                        title="Ver em Grade"
-                    >
-                        <flux:icon icon="squares-2x2" class="size-4" />
-                    </button>
-                    <button 
-                        wire:click="$set('displayMode', 'list')" 
-                        class="p-1 px-2 rounded-md transition-all {{ $displayMode === 'list' ? 'bg-white dark:bg-zinc-700 shadow-sm text-indigo-600' : 'text-zinc-500 hover:text-zinc-700' }}"
-                        title="Ver em Lista"
-                    >
-                        <flux:icon icon="list-bullet" class="size-4" />
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
+    <livewire:dashboard.toolbar 
+        :$currentFolderId 
+        :$search 
+        :$filterType 
+        :$displayMode 
+    />
 
     {{-- Dashboard Content --}}
     <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
         {{-- Sidebar --}}
-        <x-sidebar-nav :$currentFolderId :$view :$isCreatingFolder :$search />
+        <livewire:dashboard.sidebar 
+            :$currentFolderId 
+            :$view 
+            :$search 
+        />
 
         {{-- Main Grid Area --}}
         <div 
             class="lg:col-span-3 min-h-[500px] relative transition-all"
             x-data="{ isDragging: false }"
-            @dragover.prevent="isDragging = true"
+            @dragover.prevent="if ($event.dataTransfer.types.includes('Files')) isDragging = true"
             @dragleave.prevent="isDragging = false"
             @drop.prevent="
                 isDragging = false; 
                 if ($event.dataTransfer.files.length > 0) {
-                    $wire.upload('file', $event.dataTransfer.files[0])
+                    $dispatch('trigger-upload', { files: $event.dataTransfer.files })
                 }
             "
         >
@@ -477,103 +414,79 @@ new class extends Component {
                 <span class="mt-6 text-xl font-black text-indigo-600">Solte para fazer o Upload</span>
             </div>
 
-            {{-- Erro de upload --}}
-            @error('file')
-                <div class="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm font-bold rounded-2xl border border-red-100 dark:border-red-800 flex items-center gap-3">
-                    <flux:icon icon="exclamation-circle" class="size-5 shrink-0" />
-                    {{ $message }}
-                </div>
-            @enderror
 
-            @if($documents->isEmpty() && empty($folders))
-                <div class="group relative p-20 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-3xl flex flex-col items-center justify-center text-center transition-all hover:border-indigo-300 dark:hover:border-indigo-800 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/5">
-                    <div class="size-20 bg-zinc-50 dark:bg-zinc-900 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-sm">
-                        <flux:icon icon="{{ $view === 'trash' ? 'trash' : ($view === 'favorites' ? 'star' : 'document') }}" class="size-10 text-zinc-300 dark:text-zinc-700" />
-                    </div>
-                    <h3 class="text-xl font-black text-zinc-900 dark:text-white mb-2">
-                        @if($search) Nenhum resultado para "{{ $search }}"
-                        @elseif($view === 'trash') Lixeira vazia
-                        @elseif($view === 'favorites') Nenhum favorito
-                        @else Seu cofre está vazio
-                        @endif
-                    </h3>
-                    <p class="max-w-xs mx-auto text-sm text-zinc-500 dark:text-zinc-400 font-medium mb-6">
-                        @if($search) Tente pesquisar por outros termos.
-                        @elseif($view === 'trash') Arquivos excluídos aparecerão aqui.
-                        @elseif($view === 'favorites') Marque seus arquivos importantes com uma estrela.
-                        @else Comece enviando seus primeiros arquivos ou criando pastas.
-                        @endif
-                    </p>
-                    @if($view === 'all' && !$search)
-                        <label class="cursor-pointer">
-                            <input type="file" wire:model="file" class="hidden">
-                            <flux:button size="sm" variant="ghost" as="div" class="text-indigo-600 font-black hover:bg-indigo-50">Fazer primeiro upload</flux:button>
-                        </label>
-                    @endif
-                </div>
-            @else
-                @if($displayMode === 'grid')
-                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {{-- Folders --}}
-                        @foreach($folders as $folder)
-                            <x-folder-card :$folder :$currentFolderId :$selectedDocumentIds />
-                        @endforeach
 
-                        {{-- Documents --}}
-                        @foreach($documents as $doc)
-                            <x-file-card :$doc :$selectedDocumentIds :$view />
-                        @endforeach
+
+                @if($documents->isEmpty() && empty($folders))
+                    <div class="group relative p-20 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-3xl flex flex-col items-center justify-center text-center transition-all hover:border-indigo-300 dark:hover:border-indigo-800 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/5">
+                        <div class="size-20 bg-zinc-50 dark:bg-zinc-900 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-sm">
+                            <flux:icon icon="{{ $view === 'trash' ? 'trash' : ($view === 'favorites' ? 'star' : 'document') }}" class="size-10 text-zinc-300 dark:text-zinc-700" />
+                        </div>
+                        <h3 class="text-xl font-black text-zinc-900 dark:text-white mb-2">
+                            @if($search) Nenhum resultado para "{{ $search }}"
+                            @elseif($view === 'trash') Lixeira vazia
+                            @elseif($view === 'favorites') Nenhum favorito
+                            @else Seu cofre está vazio
+                            @endif
+                        </h3>
+                        <p class="max-w-xs mx-auto text-sm text-zinc-500 dark:text-zinc-400 font-medium mb-6">
+                            @if($search) Tente pesquisar por outros termos.
+                            @elseif($view === 'trash') Arquivos excluídos aparecerão aqui.
+                            @elseif($view === 'favorites') Marque seus arquivos importantes com uma estrela.
+                            @else Comece enviando seus primeiros arquivos ou criando pastas.
+                            @endif
+                        </p>
                     </div>
                 @else
-                    <div class="bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 overflow-hidden shadow-sm">
-                        <table class="w-full text-left border-collapse">
-                            <thead>
-                                <tr class="bg-zinc-50/50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-800">
-                                    <th class="py-4 pl-4 pr-3 text-[10px] font-black uppercase tracking-widest text-zinc-400">Nome</th>
-                                    <th class="py-4 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-400">Tipo</th>
-                                    <th class="py-4 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-400">Tamanho</th>
-                                    <th class="py-4 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-400">Data</th>
-                                    <th class="py-4 pl-3 pr-4 text-right"></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {{-- Folders Row --}}
-                                @foreach($folders as $folder)
-                                    <x-folder-row :$folder :$selectedDocumentIds />
-                                @endforeach
+                    @if($displayMode === 'grid')
+                        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {{-- Folders --}}
+                            @foreach($folders as $folder)
+                                <x-folder-card :$folder :$currentFolderId :$selectedDocumentIds />
+                            @endforeach
 
-                                {{-- Documents Row --}}
-                                @foreach($documents as $doc)
-                                    <x-file-row :$doc :$selectedDocumentIds :$view />
-                                @endforeach
-                            </tbody>
-                        </table>
+                            {{-- Documents --}}
+                            @foreach($documents as $doc)
+                                <x-file-card :$doc :$selectedDocumentIds :$view />
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 overflow-hidden shadow-sm">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-zinc-50/50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-800">
+                                        <th class="py-4 pl-4 pr-3 text-[10px] font-black uppercase tracking-widest text-zinc-400">Nome</th>
+                                        <th class="py-4 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-400">Tipo</th>
+                                        <th class="py-4 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-400">Tamanho</th>
+                                        <th class="py-4 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-400">Data</th>
+                                        <th class="py-4 pl-3 pr-4 text-right"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {{-- Folders Row --}}
+                                    @foreach($folders as $folder)
+                                        <x-folder-row :$folder :$selectedDocumentIds />
+                                    @endforeach
+
+                                    {{-- Documents Row --}}
+                                    @foreach($documents as $doc)
+                                        <x-file-row :$doc :$selectedDocumentIds :$view />
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @endif
+
+                    {{-- Paginação --}}
+                    <div class="mt-8">
+                        {{ $documents->links() }}
                     </div>
                 @endif
-            @endif
-        </div>
-    </div>
-    <x-selection-bar :$selectedDocumentIds :$view :$currentFolderId />
 
-    {{-- Modal de Preview de Imagem --}}
-    <flux:modal name="image-preview" class="max-w-5xl !p-0 overflow-hidden bg-white dark:bg-zinc-900 border-none">
-        @if($previewingImage)
-            <div class="relative w-full aspect-video md:aspect-auto md:h-[80vh] flex flex-col items-center justify-center bg-black">
-                <img 
-                    src="{{ asset('storage/' . $previewingImage->path) }}" 
-                    class="max-w-full max-h-full object-contain shadow-2xl"
-                    alt="{{ $previewingImage->name }}"
-                >
-                
-                <div class="absolute bottom-6 left-0 right-0 flex flex-col items-center gap-2 bg-gradient-to-t from-black/60 to-transparent pb-4 pt-10">
-                    <span class="text-white text-lg font-black tracking-tight drop-shadow-lg">
-                        {{ $previewingImage->name }}
-                    </span>
-                    <span class="text-zinc-300 text-xs font-bold uppercase tracking-widest drop-shadow-md">
-                        {{ $this->formatBytes($previewingImage->size_bytes) }} • {{ $previewingImage->created_at->format('d/m/Y') }}
-                    </span>
-                </div>
-            </div>
-        @endif
-    </flux:modal>
+            <x-selection-bar :$selectedDocumentIds :$view :$currentFolderId />
+
+    {{-- Modais Isolados (Islands) --}}
+    <livewire:dashboard.image-preview />
+    <livewire:dashboard.rename-modal />
+
 </div>
