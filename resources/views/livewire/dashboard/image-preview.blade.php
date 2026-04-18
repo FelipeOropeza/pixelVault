@@ -2,27 +2,23 @@
 
 use Livewire\Component;
 use Livewire\Attributes\On;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Number;
 use App\Models\Document;
+use App\Traits\HasFileHelpers;
 
 new class extends Component {
+    use HasFileHelpers;
+
     public ?Document $previewingImage = null;
 
     #[On('preview-image')]
     public function load(int $id): void
     {
-        $this->previewingImage = Document::findOrFail($id);
+        $this->previewingImage = Auth::user()->documents()->findOrFail($id);
         $this->modal('image-preview')->show();
     }
 
-    public function formatBytes(int $bytes, int $precision = 2): string
-    {
-        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        $bytes = max($bytes, 0);
-        $pow   = floor(($bytes ? log($bytes) : 0) / log(1024));
-        $pow   = min($pow, count($units) - 1);
-        $bytes /= (1 << (10 * $pow));
-        return round($bytes, $precision) . ' ' . $units[$pow];
-    }
 };
 ?>
 

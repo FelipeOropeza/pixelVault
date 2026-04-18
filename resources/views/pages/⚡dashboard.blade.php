@@ -1,6 +1,5 @@
 <?php // resources/views/pages/⚡dashboard.blade.php
 
-use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 use Livewire\Component;
 use App\Models\Document;
@@ -8,7 +7,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
 
 new class extends Component {
-    use WithFileUploads, WithPagination;
+    use WithPagination;
     use \App\Traits\HasFileHelpers;
 
     public array $selectedDocumentIds = [];
@@ -58,7 +57,7 @@ new class extends Component {
     }
 
     #[\Livewire\Attributes\On('drop-on-folder')]
-    public function handleDropOnFolder(int $folderId, string $docId): void
+    public function handleDropOnFolder(int $folderId, ?string $docId = null): void
     {
         if (!empty($this->selectedDocumentIds)) {
             $this->moveSelectedDocuments($folderId);
@@ -202,6 +201,7 @@ new class extends Component {
     {
         $doc = Auth::user()->documents()->findOrFail($id);
         $doc->update(['is_favorite' => !$doc->is_favorite]);
+        $this->dispatch('dashboard-refresh');
     }
 
     public function deleteDocument(int $id): void
@@ -471,8 +471,10 @@ new class extends Component {
 
             <x-selection-bar :$selectedDocumentIds :$view :$currentFolderId />
 
-    {{-- Modais Isolados (Islands) --}}
-    <livewire:dashboard.image-preview />
-    <livewire:dashboard.rename-modal />
+            {{-- Modais Isolados (Islands) --}}
+            <livewire:dashboard.image-preview />
+            <livewire:dashboard.rename-modal />
 
+        </div>
+    </div>
 </div>

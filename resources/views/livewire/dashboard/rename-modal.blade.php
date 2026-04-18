@@ -18,9 +18,11 @@ new class extends Component {
         $this->editingType = $type;
         
         if ($type === 'file') {
-            $this->editingName = Document::findOrFail($id)->name;
+            $doc = Auth::user()->documents()->findOrFail($id);
+            $this->editingName = $doc->name;
         } else {
-            $this->editingName = Folder::findOrFail($id)->name;
+            $folder = Auth::user()->folders()->findOrFail($id);
+            $this->editingName = $folder->name;
         }
 
         $this->modal('edit-name')->show();
