@@ -6,6 +6,8 @@
     @dragover.prevent="over = true"
     @dragleave="over = false"
     @drop.prevent="over = false; $dispatch('drop-on-folder', { folderId: {{ $folder->id }}, docId: $event.dataTransfer.getData('docId') })"
+    @click="$dispatch('toggle-selection', { id: {{ $folder->id }}, type: 'folder' })"
+    @dblclick="$wire.selectFolder({{ $folder->id }})"
     class="group cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors border-b border-zinc-100 dark:border-zinc-800 transition-all {{ in_array('folder:'.$folder->id, $selectedDocumentIds) ? 'bg-indigo-50/50 dark:bg-indigo-900/10' : '' }}"
     x-bind:class="over ? 'bg-indigo-50 dark:bg-indigo-900/20 shadow-inner' : ''"
 >
@@ -19,7 +21,7 @@
                 class="size-4 rounded border-zinc-300 dark:border-zinc-700 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
             >
             <flux:icon icon="folder" variant="solid" class="size-6 text-indigo-500/40" />
-            <span wire:click="selectFolder({{ $folder->id }})" class="text-sm font-bold text-zinc-700 dark:text-zinc-300 hover:text-indigo-600 transition-colors">{{ $folder->name }}</span>
+            <span @click.stop="$wire.selectFolder({{ $folder->id }})" class="text-sm font-bold text-zinc-700 dark:text-zinc-300 hover:text-indigo-600 transition-colors">{{ $folder->name }}</span>
         </div>
     </td>
     <td class="py-4 px-3 text-sm text-zinc-500 font-medium">Pasta</td>

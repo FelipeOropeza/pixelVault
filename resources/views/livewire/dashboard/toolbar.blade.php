@@ -3,6 +3,7 @@
 use Livewire\Component;
 use Livewire\WithFileUploads;
 use App\Models\Folder;
+use App\Models\Document;
 use Illuminate\Support\Facades\Auth;
 
 new class extends Component {
@@ -16,7 +17,10 @@ new class extends Component {
     
     #[\Livewire\Attributes\Reactive]
     public string $displayMode = 'grid';
+
+    #[\Livewire\Attributes\Reactive]
     public ?int $currentFolderId = null;
+
     public $uploads = [];
 
     public function updatedSearch(): void
@@ -38,15 +42,43 @@ new class extends Component {
 
     public function updatedUploads(): void
     {
-        $this->dispatch('files-uploaded', uploads: $this->uploads);
-        $this->uploads = [];
-    }
+        if (empty($this->uploads)) return;
 
-    #[\Livewire\Attributes\On('trigger-upload')]
-    public function triggerUpload($files): void
-    {
-        $this->uploads = $files;
-        $this->updatedUploads();
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+        
+        $totalSize = collect($this->uploads)->sum(fn($file) => $file->getSize());
+
+        if (!$user->hasAvailableStorage($totalSize)) {
+            $this->uploads = [];
+            $this->dispatch('notify', 'Sem espaço disponível para todos os arquivos. Faça um upgrade!');
+            return;
+        }
+
+        $documentsData = [];
+        foreach ($this->uploads as $file) {
+            $path = $file->store('documents/' . $user->id, 'public');
+
+            $documentsData[] = [
+                'user_id'    => $user->id,
+                'folder_id'  => $this->currentFolderId,
+                'name'       => $file->getClientOriginalName(),
+                'path'       => $path,
+                'size_bytes' => $file->getSize(),
+                'mime_type'  => $file->getMimeType(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+
+        if (!empty($documentsData)) {
+            Document::insert($documentsData);
+            $user->addStorageUsage($totalSize);
+        }
+
+        $this->uploads = [];
+        $this->dispatch('notify', 'Arquivos enviados com sucesso!');
+        $this->dispatch('dashboard-refresh');
     }
 
     public function getBreadcrumbs(): array
@@ -62,7 +94,10 @@ new class extends Component {
 };
 ?>
 
-<div class="flex flex-col gap-8 mb-12">
+<div 
+    class="flex flex-col gap-8 mb-12"
+    x-on:trigger-upload.window="$wire.uploadMultiple('uploads', $event.detail.files)"
+>
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div class="space-y-1">
             <div class="flex items-center gap-3">

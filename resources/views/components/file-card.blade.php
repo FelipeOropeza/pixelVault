@@ -6,6 +6,7 @@
     @dragstart="event.dataTransfer.setData('docId', '{{ $doc->id }}')"
     class="group relative aspect-square bg-white dark:bg-zinc-900 rounded-3xl overflow-hidden border {{ in_array('file:'.$doc->id, $selectedDocumentIds) ? 'border-indigo-500 ring-4 ring-indigo-500/10' : 'border-zinc-200 dark:border-zinc-800' }} shadow-sm transition-all hover:shadow-xl hover:shadow-indigo-500/10 cursor-grab active:cursor-grabbing"
     @dblclick="{{ str_contains($doc->mime_type, 'image') ? '$dispatch(\'preview-image\', { id: '.$doc->id.' })' : '' }}"
+    @click="$dispatch('toggle-selection', { id: {{ $doc->id }}, type: 'file' })"
 >
     {{-- Checkbox de Seleção --}}
     <div class="absolute top-3 left-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity {{ in_array('file:'.$doc->id, $selectedDocumentIds) ? 'opacity-100' : '' }}">

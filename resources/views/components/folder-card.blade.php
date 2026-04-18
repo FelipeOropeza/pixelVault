@@ -8,7 +8,8 @@
     @drop.prevent="over = false; $dispatch('drop-on-folder', { folderId: {{ $folder->id }}, docId: $event.dataTransfer.getData('docId') })"
     class="group relative cursor-pointer aspect-square bg-white dark:bg-zinc-900 rounded-3xl p-6 flex flex-col items-center justify-center border {{ in_array('folder:'.$folder->id, $selectedDocumentIds) ? 'border-indigo-500 ring-4 ring-indigo-500/10' : 'border-zinc-200 dark:border-zinc-800' }} shadow-sm transition-all hover:shadow-xl hover:shadow-indigo-500/10"
     x-bind:class="over ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/10 scale-105' : ''"
-    wire:click="selectFolder({{ $folder->id }})"
+    @click="$dispatch('toggle-selection', { id: {{ $folder->id }}, type: 'folder' })"
+    @dblclick="$wire.selectFolder({{ $folder->id }})"
 >
     {{-- Checkbox de Seleção --}}
     <div class="absolute top-3 left-3 z-20 opacity-0 group-hover:opacity-100 transition-opacity {{ in_array('folder:'.$folder->id, $selectedDocumentIds) ? 'opacity-100' : '' }}">
@@ -42,6 +43,6 @@
             </button>
         </div>
     </div>
-    <span class="mt-4 text-sm font-bold text-zinc-700 dark:text-zinc-300 text-center truncate w-full">{{ $folder->name }}</span>
+    <span @click.stop="$wire.selectFolder({{ $folder->id }})" class="mt-4 text-sm font-bold text-zinc-700 dark:text-zinc-300 text-center truncate w-full hover:text-indigo-600 transition-colors">{{ $folder->name }}</span>
     <span class="text-[10px] text-zinc-400 mt-1 font-medium">{{ $folder->documents_count ?? $folder->documents()->count() }} arquivos</span>
 </div>

@@ -38,6 +38,13 @@ new class extends Component {
         $this->resetPage();
     }
 
+    public function selectFolder(?int $id): void
+    {
+        $this->currentFolderId = $id;
+        $this->view = 'all';
+        $this->resetPage();
+    }
+
     #[\Livewire\Attributes\On('notify')]
     public function notify(string $message): void
     {
@@ -175,6 +182,14 @@ new class extends Component {
         }
 
         $folder->delete();
+        
+        // Remove da seleção se estiver lá
+        $key = "folder:$id";
+        if (($keyIndex = array_search($key, $this->selectedDocumentIds)) !== false) {
+            unset($this->selectedDocumentIds[$keyIndex]);
+            $this->selectedDocumentIds = array_values($this->selectedDocumentIds);
+        }
+
         $this->dispatch('notify', 'Pasta excluída com sucesso!');
         
         if ($this->currentFolderId === $id) {
@@ -204,6 +219,14 @@ new class extends Component {
             $doc->delete();
             $this->dispatch('notify', 'Arquivo movido para a lixeira.');
         }
+
+        // Remove da seleção se estiver lá
+        $key = "file:$id";
+        if (($keyIndex = array_search($key, $this->selectedDocumentIds)) !== false) {
+            unset($this->selectedDocumentIds[$keyIndex]);
+            $this->selectedDocumentIds = array_values($this->selectedDocumentIds);
+        }
+
         $this->dispatch('dashboard-refresh');
     }
 
@@ -222,44 +245,7 @@ new class extends Component {
         $this->dispatch('dashboard-refresh');
     }
 
-    #[\Livewire\Attributes\On('files-uploaded')]
-    public function handleUpload(array $uploads): void
-    {
-        // O Livewire 4 SFC/Island pode passar os arquivos temporários via evento
-        /** @var \App\Models\User $user */
-        $user = Auth::user();
-        
-        $totalSize = collect($uploads)->sum(fn($file) => $file->getSize());
 
-        if (!$user->hasAvailableStorage($totalSize)) {
-            $this->dispatch('notify', 'Sem espaço disponível para todos os arquivos. Faça um upgrade!');
-            return;
-        }
-
-        $documentsData = [];
-        foreach ($uploads as $file) {
-            $path = $file->store('documents/' . $user->id, 'public');
-
-            $documentsData[] = [
-                'user_id'    => $user->id,
-                'folder_id'  => $this->currentFolderId,
-                'name'       => $file->getClientOriginalName(),
-                'path'       => $path,
-                'size_bytes' => $file->getSize(),
-                'mime_type'  => $file->getMimeType(),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ];
-        }
-
-        if (!empty($documentsData)) {
-            Document::insert($documentsData);
-            $user->addStorageUsage($totalSize);
-        }
-
-        $this->dispatch('notify', 'Arquivos enviados com sucesso!');
-        $this->dispatch('dashboard-refresh');
-    }
 
     public function downloadDocument(int $id)
     {
