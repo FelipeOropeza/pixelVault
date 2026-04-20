@@ -108,13 +108,13 @@ new class extends Component {
 
         if ($folderIds->isNotEmpty()) {
             if ($this->view === 'trash') {
-                $user->folders()->whereIn('id', $folderIds)->forceDelete(); // Pastas nem deveriam estar na lixeira, mas caso estejam.
-            } else {
-                // Soft delete manual dos documentos das pastas selecionadas
                 foreach ($folders as $folder) {
-                    $folder->documents()->update(['deleted_at' => now()]);
+                    $folder->forceDelete();
                 }
-                $user->folders()->whereIn('id', $folderIds)->delete();
+            } else {
+                foreach ($folders as $folder) {
+                    $folder->delete();
+                }
             }
         }
 
@@ -174,10 +174,6 @@ new class extends Component {
         if ($folder->documents_count > 0 && !$force) {
             $this->js("if(confirm('Esta pasta contém {$folder->documents_count} arquivos. Deseja excluir a pasta e mover todos os arquivos para a lixeira?')) { \$wire.deleteFolder($id, true) }");
             return;
-        }
-
-        if ($folder->documents_count > 0) {
-            $folder->documents()->update(['deleted_at' => now()]);
         }
 
         $folder->delete();
@@ -327,6 +323,7 @@ new class extends Component {
         if ($this->view === 'all' && empty($this->search)) {
             $folders = $user->folders()
                 ->where('parent_id', $this->currentFolderId)
+                ->withCount('documents')
                 ->get();
         }
 

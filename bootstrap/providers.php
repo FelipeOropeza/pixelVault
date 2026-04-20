@@ -1,6 +1,9 @@
 <?php
 
+use App\Providers\AppServiceProvider;
+use Flux\FluxServiceProvider;
+
 return [
-    App\Providers\AppServiceProvider::class,
-    Flux\FluxServiceProvider::class,
+    AppServiceProvider::class,
+    FluxServiceProvider::class,
 ];

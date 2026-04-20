@@ -36,4 +36,22 @@ class Folder extends Model
     {
         return $this->hasMany(Folder::class, 'parent_id');
     }
+
+    protected static function booted()
+    {
+        static::deleting(function (Folder $folder) {
+            if ($folder->isForceDeleting()) {
+                $folder->documents()->forceDelete();
+                $folder->children()->get()->each->forceDelete();
+            } else {
+                $folder->documents()->delete();
+                $folder->children()->get()->each->delete();
+            }
+        });
+
+        static::restoring(function (Folder $folder) {
+            $folder->documents()->withTrashed()->restore();
+            $folder->children()->withTrashed()->get()->each->restore();
+        });
+    }
 }
